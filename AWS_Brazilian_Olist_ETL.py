@@ -1,0 +1,238 @@
+import pandas as pd
+import pandas_gbq
+from google.oauth2 import service_account
+from datetime import timedelta, datetime, date
+
+from airflow import DAG
+from airflow.providers.amazon.aws.operators.s3 import S3CreateBucketOperator, S3DeleteBucketOperator
+from airflow.providers.amazon.aws.transfers.sql_to_s3 import SqlToS3Operator
+from airflow.providers.amazon.aws.transfers.s3_to_redshift import S3ToRedshiftOperator
+from airflow.providers.postgres.operators.postgres import PostgresOperator
+
+# Define the default arguments for the DAG
+default_args = {
+    'owner': 'Dmitri',
+    'start_date': datetime(2023, 9, 12),
+    'retries': 1,  # Number of retries if a task fails
+    'retry_delay': timedelta(minutes=5),  # Time between retries
+}
+
+# Create a DAG instance
+dag = DAG(
+    'AWS_Brazilian_Olist_ETL', 
+    default_args=default_args,
+    description='An Airflow DAG for Brazilian Olist Dataset',
+    schedule_interval='@monthly',  # Set the schedule interval (e.g., None for manual runs)
+    catchup=False  # Do not backfill (run past dates) when starting the DAG
+)
+
+# Get Current Date
+today = date.today()
+current_date = today.strftime('%Y-%m-%d')
+
+# Config variables
+bucket_name = "brazilian-olist"
+bucket_subfolder = "extraction/" + current_date + "/"
+postgres_conn = "postgres_default"
+aws_conn = "aws_default"
+redshift_conn = "redshift_default"
+redshift_dbname = "dev"
+redshift_dbuser = "admin"
+redshift_poll_interval = 10
+redshift_postgres_conn = "redshift_postgres_default"
+aws_region = "ap-southeast-1"
+
+# Transfer SQL to S3
+sql_to_s3_order_items = SqlToS3Operator(
+    task_id="sql_to_s3_order_items",
+    query="SELECT * FROM PUBLIC.order_items;",
+    s3_bucket=bucket_name,
+    s3_key=bucket_subfolder + "order-items-" + str(current_date) + ".csv",
+    replace=True,
+    sql_conn_id=postgres_conn,
+    aws_conn_id=aws_conn,
+    file_format='csv',
+    pd_kwargs={'index': False},
+    dag=dag,
+)
+# Transfer SQL to S3
+sql_to_s3_order_payments = SqlToS3Operator(
+    task_id="sql_to_s3_order_payments",
+    query="SELECT * FROM PUBLIC.order_payments;",
+    s3_bucket=bucket_name,
+    s3_key=bucket_subfolder + "order-payments-" + str(current_date) + ".csv",
+    replace=True,
+    sql_conn_id=postgres_conn,
+    aws_conn_id=aws_conn,
+    file_format='csv',
+    pd_kwargs={'index': False},
+    dag=dag,
+)
+# Transfer SQL to S3
+sql_to_s3_orders = SqlToS3Operator(
+    task_id="sql_to_s3_orders",
+    query="SELECT * FROM PUBLIC.orders;",
+    s3_bucket=bucket_name,
+    s3_key=bucket_subfolder + "orders-" + str(current_date) + ".csv",
+    replace=True,
+    sql_conn_id=postgres_conn,
+    aws_conn_id=aws_conn,
+    file_format='csv',
+    pd_kwargs={'index': False},
+    dag=dag,
+)
+# Transfer SQL to S3
+sql_to_s3_products = SqlToS3Operator(
+    task_id="sql_to_s3_products",
+    # query="SELECT * FROM PUBLIC.products;",
+    # query="SELECT * FROM PUBLIC.products LIMIT 10;",
+    query="SELECT * FROM PUBLIC.products WHERE product_id = 'fffe9eeff12fcbd74a2f2b007dde0c58';",
+    s3_bucket=bucket_name,
+    s3_key=bucket_subfolder + "products-" + str(current_date) + ".csv",
+    replace=True,
+    sql_conn_id=postgres_conn,
+    aws_conn_id=aws_conn,
+    file_format='csv',
+    pd_kwargs={'index': False},
+    dag=dag,
+)
+# Transfer SQL to S3
+sql_to_s3_sellers = SqlToS3Operator(
+    task_id="sql_to_s3_sellers",
+    query="SELECT * FROM PUBLIC.sellers;",
+    s3_bucket=bucket_name,
+    s3_key=bucket_subfolder + "sellers-" + str(current_date) + ".csv",
+    replace=True,
+    sql_conn_id=postgres_conn,
+    aws_conn_id=aws_conn,
+    file_format='csv',
+    pd_kwargs={'index': False},
+    dag=dag,
+)
+
+
+# Transfer S3 to Redshit
+transfer_s3_to_redshift_products = S3ToRedshiftOperator(
+    task_id="transfer_s3_to_redshift_products",
+    schema="PUBLIC",
+    table="products",
+    s3_bucket=bucket_name,
+    s3_key=bucket_subfolder + "products-" + str(current_date) + ".csv",
+    redshift_conn_id=redshift_conn,
+    aws_conn_id=aws_conn,
+    copy_options=["FORMAT AS CSV", "DELIMITER ','", "QUOTE '\"'", 'IGNOREHEADER 1', f"REGION AS '{aws_region}'"],
+    method="UPSERT", # Use APPEND, UPSERT and REPLACE
+    upsert_keys=["product_id"], # List of fields to use as key on upsert action
+    dag=dag,
+)
+# Transfer S3 to Redshit
+transfer_s3_to_redshift_sellers = S3ToRedshiftOperator(
+    task_id="transfer_s3_to_redshift_sellers",
+    schema="PUBLIC",
+    table="sellers",
+    s3_bucket=bucket_name,
+    s3_key=bucket_subfolder + "sellers-" + str(current_date) + ".csv",
+    redshift_conn_id=redshift_conn,
+    aws_conn_id=aws_conn,
+    copy_options=["FORMAT AS CSV", "DELIMITER ','", "QUOTE '\"'", 'IGNOREHEADER 1', f"REGION AS '{aws_region}'"],
+    method="REPLACE", # Use APPEND, UPSERT and REPLACE
+    # upsert_keys=[], # List of fields to use as key on upsert action
+    dag=dag,
+)
+# Transfer S3 to Redshit
+transfer_s3_to_redshift_orders = S3ToRedshiftOperator(
+    task_id="transfer_s3_to_redshift_orders",
+    schema="PUBLIC",
+    table="orders",
+    s3_bucket=bucket_name,
+    s3_key=bucket_subfolder + "orders-" + str(current_date) + ".csv",
+    redshift_conn_id=redshift_conn,
+    aws_conn_id=aws_conn,
+    copy_options=["FORMAT AS CSV", "DELIMITER ','", "QUOTE '\"'", 'IGNOREHEADER 1', f"REGION AS '{aws_region}'"],
+    method="REPLACE", # Use APPEND, UPSERT and REPLACE
+    # upsert_keys=[], # List of fields to use as key on upsert action
+    dag=dag,
+)
+# Transfer S3 to Redshit
+transfer_s3_to_redshift_order_items = S3ToRedshiftOperator(
+    task_id="transfer_s3_to_redshift_order_items",
+    schema="PUBLIC",
+    table="order_items",
+    s3_bucket=bucket_name,
+    s3_key=bucket_subfolder + "order-items-" + str(current_date) + ".csv",
+    redshift_conn_id=redshift_conn,
+    aws_conn_id=aws_conn,
+    copy_options=["FORMAT AS CSV", "DELIMITER ','", "QUOTE '\"'", 'IGNOREHEADER 1', f"REGION AS '{aws_region}'"],
+    method="REPLACE", # Use APPEND, UPSERT and REPLACE
+    # upsert_keys=[], # List of fields to use as key on upsert action
+    dag=dag,
+)
+# Transfer S3 to Redshit
+transfer_s3_to_redshift_order_payments = S3ToRedshiftOperator(
+    task_id="transfer_s3_to_redshift_order_payments",
+    schema="PUBLIC",
+    table="order_payments",
+    s3_bucket=bucket_name,
+    s3_key=bucket_subfolder + "order-payments-" + str(current_date) + ".csv",
+    redshift_conn_id=redshift_conn,
+    aws_conn_id=aws_conn,
+    copy_options=["FORMAT AS CSV", "DELIMITER ','", "QUOTE '\"'", 'IGNOREHEADER 1', f"REGION AS '{aws_region}'"],
+    method="REPLACE", # Use APPEND, UPSERT and REPLACE
+    # upsert_keys=[], # List of fields to use as key on upsert action
+    dag=dag,
+)
+
+
+# Define the Redshift PostgresOperator task
+count_products_redshift_sql_task = PostgresOperator(
+    task_id='count_products_redshift_sql_task',
+    postgres_conn_id=redshift_postgres_conn,
+    sql="SELECT * FROM PUBLIC.PRODUCTS;",
+    autocommit=True,
+    database='dev',
+    dag=dag,
+)
+# Define the Redshift PostgresOperator task
+count_sellers_redshift_sql_task = PostgresOperator(
+    task_id='count_sellers_redshift_sql_task',
+    postgres_conn_id=redshift_postgres_conn,
+    sql="SELECT * FROM PUBLIC.sellers;",
+    autocommit=True,
+    database='dev',
+    dag=dag,
+)
+# Define the Redshift PostgresOperator task
+count_orders_redshift_sql_task = PostgresOperator(
+    task_id='count_orders_redshift_sql_task',
+    postgres_conn_id=redshift_postgres_conn,
+    sql="SELECT * FROM PUBLIC.orders;",
+    autocommit=True,
+    database='dev',
+    dag=dag,
+)
+# Define the Redshift PostgresOperator task
+count_order_items_redshift_sql_task = PostgresOperator(
+    task_id='count_order_items_redshift_sql_task',
+    postgres_conn_id=redshift_postgres_conn,
+    sql="SELECT * FROM PUBLIC.order_items;",
+    autocommit=True,
+    database='dev',
+    dag=dag,
+)
+# Define the Redshift PostgresOperator task
+count_order_payments_redshift_sql_task = PostgresOperator(
+    task_id='count_order_payments_redshift_sql_task',
+    postgres_conn_id=redshift_postgres_conn,
+    sql="SELECT * FROM PUBLIC.order_payments;",
+    autocommit=True,
+    database='dev',
+    dag=dag,
+)
+
+# Define task
+[sql_to_s3_products, sql_to_s3_sellers] >> sql_to_s3_order_items >> [sql_to_s3_order_payments, sql_to_s3_orders]
+sql_to_s3_products >> transfer_s3_to_redshift_products >> count_products_redshift_sql_task
+sql_to_s3_sellers >> transfer_s3_to_redshift_sellers >> count_sellers_redshift_sql_task
+sql_to_s3_order_items >> transfer_s3_to_redshift_order_items >> count_order_items_redshift_sql_task
+sql_to_s3_order_payments >> transfer_s3_to_redshift_order_payments >> count_order_payments_redshift_sql_task
+sql_to_s3_orders >> transfer_s3_to_redshift_orders >> count_orders_redshift_sql_task
