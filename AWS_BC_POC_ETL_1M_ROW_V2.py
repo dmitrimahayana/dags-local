@@ -19,7 +19,7 @@ default_args = {
 
 # Create a DAG instance
 dag = DAG(
-    'AWS_BC_POC_ETL_1M_ROW_V2.py',
+    'AWS_BC_POC_ETL_1M_ROW_V2',
     tags=["AWS_BC_POC"],
     default_args=default_args,
     description='An Airflow DAG for Brazilian Olist Dataset',
