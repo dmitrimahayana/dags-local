@@ -49,7 +49,7 @@ delete_table = BigQueryDeleteTableOperator(
 ## Function ETL using Pandas GBQ
 def etl_function():
     # Extract data into a DataFrame (example: CSV file)
-    df = pd.read_csv('/opt/airflow/dataset/Digimon_Dataset/DigiDB_digimonlist.csv')
+    df = pd.read_csv('/opt/airflow/dags/dataset/Digimon_Dataset/DigiDB_digimonlist.csv')
     
     # Perform transformations (example: converting column names to lowercase)
     df.columns = df.columns.str.lower()
