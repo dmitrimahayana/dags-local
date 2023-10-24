@@ -15,7 +15,7 @@ from airflow.contrib.operators.bigquery_operator import BigQueryOperator
 default_args = {
     'owner': 'Dmitri',
     'start_date': datetime(2023, 9, 12),
-    'retries': 1,  # Number of retries if a task fails
+    'retries': 0,  # Number of retries if a task fails
     'retry_delay': timedelta(minutes=5),  # Time between retries
 }
 
@@ -44,7 +44,7 @@ delete_table = BigQueryDeleteTableOperator(
 ## Function ETL using Pandas GBQ
 def extract_flight_data():
     LIMIT_JSON_FILE = 100000
-    collect_obj = Collect_Flights('/opt/airflow/dataset/Revalue_Nature/Case 2/', LIMIT_JSON_FILE)
+    collect_obj = Collect_Flights('/opt/airflow/dags/repo/dataset/Revalue_Nature/Case 2/', LIMIT_JSON_FILE)
     df = collect_obj.collect_data()
     
     credentials = service_account.Credentials.from_service_account_file(
