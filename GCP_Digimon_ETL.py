@@ -55,7 +55,7 @@ def etl_function():
     df.columns = df.columns.str.lower()
     
     credentials = service_account.Credentials.from_service_account_file(
-        '/opt/airflow/dags/support/gcp/ringed-land-398802-1c30c3ab5c17.json',
+        '/opt/airflow/key_gcp/keyfile.json',
     )
     # Return df
     pandas_gbq.to_gbq(df, f'{BQ_DATASET}.{BQ_TABLE}', project_id=BQ_PROJECT, credentials=credentials)
