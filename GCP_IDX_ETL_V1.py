@@ -9,7 +9,7 @@ from airflow.providers.google.cloud.operators.bigquery import BigQueryCheckOpera
 default_args = {
     'owner': 'Dmitri',
     'start_date': datetime(2023, 9, 12),
-    'retries': 1,  # Number of retries if a task fails
+    'retries': 0,  # Number of retries if a task fails
     'retry_delay': timedelta(minutes=5),  # Time between retries
 }
 
