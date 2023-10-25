@@ -24,7 +24,9 @@ dag = DAG(
     default_args=default_args,
     description='An Airflow DAG for Brazilian Olist Dataset',
     schedule_interval='@monthly',  # Set the schedule interval (e.g., None for manual runs)
-    catchup=False  # Do not backfill (run past dates) when starting the DAG
+    catchup=False,  # Do not backfill (run past dates) when starting the DAG
+    concurrency=20,  # Set the number of tasks to run concurrently
+    max_active_runs=1,  # Set the maximum number of active DAG runs
 )
 
 # Get Current Date
@@ -44,20 +46,30 @@ redshift_poll_interval = 10
 redshift_postgres_conn = "redshift_postgres_default"
 aws_region = "ap-southeast-1"
 
+# Set the batch size
+batch_size = 100000
+# Initialize variables for pagination
+offset = 0
+total_rows = 3032865
 
-# Transfer SQL to S3
-sql_to_s3_1m_rows_table = SqlToS3Operator(
-    task_id="sql_to_s3_1m_rows_table",
-    query="SELECT * FROM bc_poc_table1;",
-    s3_bucket=bucket_name,
-    s3_key=bucket_subfolder + "1m_rows_table3-" + str(current_date) + ".csv",
-    replace=True,
-    sql_conn_id=rdsmysql_conn,
-    aws_conn_id=aws_conn,
-    file_format='csv',
-    pd_kwargs={'index': False},
-    dag=dag,
-)
+# Loop until all rows are processed
+while offset < total_rows:
+    # Transfer SQL to S3
+    sql_to_s3_1m_rows_table = SqlToS3Operator(
+        task_id=f'3_mysql_to_s3_batch_{offset}',
+        query=f'SELECT * FROM bc_poc_table1 LIMIT {batch_size} OFFSET {offset}',
+        s3_bucket=bucket_name,
+        s3_key=bucket_subfolder + "1m_rows_table3-" + str(current_date) + ".csv",
+        replace=True,
+        sql_conn_id=rdsmysql_conn,
+        aws_conn_id=aws_conn,
+        file_format='csv',
+        pd_kwargs={'index': False},
+        dag=dag,
+    )
+    offset += batch_size
+    # sql_to_s3_1m_rows_table.set_upstream(previous_task)  # Set dependencies as needed
+
 # # Transfer SQL to S3
 # sql_to_s3_order_items = SqlToS3Operator(
 #     task_id="sql_to_s3_order_items1",
