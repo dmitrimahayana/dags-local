@@ -25,7 +25,7 @@ dag = DAG(
     description='An Airflow DAG for Brazilian Olist Dataset',
     schedule_interval='@monthly',  # Set the schedule interval (e.g., None for manual runs)
     catchup=False,  # Do not backfill (run past dates) when starting the DAG
-    concurrency=10,  # Set the number of tasks to run concurrently
+    concurrency=5,  # Set the number of tasks to run concurrently
     max_active_runs=1,  # Set the maximum number of active DAG runs
 )
 
