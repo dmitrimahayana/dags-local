@@ -50,7 +50,7 @@ aws_region = "ap-southeast-1"
 batch_size = 100000
 # Initialize variables for pagination
 offset = 0
-total_rows = 3032865
+total_rows = 1102860
 
 # Loop until all rows are processed
 while offset < total_rows:
