@@ -33,9 +33,8 @@ default_args = {
 }
 
 # Define empty task
-final_task = None
-list_offset = None
-run_batch_process = None
+batch_sql_to_s3_process = None
+batch_s3_to_redshift_process = None
 
 with DAG(
     dag_id="Dynamic_Task_V1",
@@ -48,9 +47,9 @@ with DAG(
     ) as dag:
 
     @task
-    def get_row_data(**kwargs):
+    def get_row_bc_poc_table1_task(**kwargs):
         get_data_task = MySqlOperator(
-            task_id='get_data_task',
+            task_id='get_row_bc_poc_table1_task2',
             sql="SELECT COUNT(*) FROM bc_poc_table1 WHERE id_relasi < 10;",
             # sql="SELECT COUNT(*) FROM bc_poc_table1;",
             mysql_conn_id=rdsmysql_conn,
@@ -70,22 +69,19 @@ with DAG(
         while offset < total_rows:
             list_offset.append(offset)
             offset += batch_size
-        
-        
         print("list_offset:", list_offset)
 
         # # Push the result (assuming it's a single value) to XCom
         ti.xcom_push(key='count_data', value=count_data)
         ti.xcom_push(key='batch_size', value=batch_size)
-
         return list_offset
 
     @task
-    def get_batch_data(offset: int, **kwargs):
+    def batch_sql_to_s3_task(offset: int, **kwargs):
         # Pull XCom value using the correct key
         ti = kwargs['ti']
-        count_data = ti.xcom_pull(task_ids='get_row_data', key='count_data')
-        batch_size = ti.xcom_pull(task_ids='get_row_data', key='batch_size')
+        count_data = ti.xcom_pull(task_ids='get_row_bc_poc_table1_task', key='count_data')
+        batch_size = ti.xcom_pull(task_ids='get_row_bc_poc_table1_task', key='batch_size')
         print("count_data:", count_data)
         print("offset:", offset)
         print("batch_size:", batch_size)
@@ -107,17 +103,17 @@ with DAG(
         sql_to_s3_task.execute(context={})
     
     @task
-    def final_task(**kwargs):
+    def batch_s3_to_redshift_task(**kwargs):
         # Pull XCom value using the correct key
         ti = kwargs['ti']
-        count_data = ti.xcom_pull(task_ids='get_row_data', key='count_data')
-        batch_size = ti.xcom_pull(task_ids='get_row_data', key='batch_size')
+        count_data = ti.xcom_pull(task_ids='get_row_bc_poc_table1_task', key='count_data')
+        batch_size = ti.xcom_pull(task_ids='get_row_bc_poc_table1_task', key='batch_size')
         print("count_data:", count_data)
         print("batch_size:", batch_size)
 
-    list_offset = get_row_data()
-    run_batch_process = get_batch_data.expand(offset=list_offset)
-    final_task = final_task()
+    list_offset = get_row_bc_poc_table1_task()
+    batch_sql_to_s3_process = batch_sql_to_s3_task.expand(offset=list_offset)
+    batch_s3_to_redshift_process = batch_s3_to_redshift_task()
 
 get_total_row1 = MySqlOperator(
     task_id='get_total_row1',
@@ -126,5 +122,4 @@ get_total_row1 = MySqlOperator(
     dag=dag
 )
 
-run_batch_process >> final_task
-final_task >> get_total_row1
+batch_sql_to_s3_process >> batch_s3_to_redshift_process >> get_total_row1
