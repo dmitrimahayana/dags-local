@@ -24,38 +24,30 @@ rdsmysql_conn = "rdsmysql_default"
 aws_conn = "aws_default"
 aws_region = "ap-southeast-1"
 
+# Define the default arguments for the DAG
+default_args = {
+    'owner': 'Dmitri',
+    'start_date': datetime(2023, 9, 12),
+    'retries': 1,  # Number of retries if a task fails
+    'retry_delay': timedelta(minutes=1),  # Time between retries
+}
+
 with DAG(
-    dag_id="Dynamic_Task_V1", 
-    start_date=datetime(2022, 3, 4), 
+    dag_id="Dynamic_Task_V1",
+    tags=["Dynamic_Task"],
+    default_args=default_args,
     description='An Airflow DAG for Brazilian Olist Dataset',
     schedule_interval='@monthly', 
     catchup=False,
+    concurrency=5,  # Set the number of tasks to run concurrently
     ) as dag:
-
-    @task()
-    def upload_to_s3(**kwargs):
-        sql_to_s3_task = SqlToS3Operator(
-            task_id="sql_to_s3_order_items1",
-            query="SELECT * FROM order_items;",
-            s3_bucket=bucket_name,
-            s3_key=bucket_subfolder + "order-items1-" + str(current_date) + ".csv",
-            replace=True,
-            sql_conn_id=rdsmysql_conn,
-            aws_conn_id=aws_conn,
-            file_format='csv',
-            pd_kwargs={'index': False},
-            dag=dag,
-        )
-        if sql_to_s3_task.execute(context={}) == 'failed':
-            print("ERROR S3")
-        else:
-            print("NO ERROR S3")
 
     @task
     def get_row_data(**kwargs):
         get_data_task = MySqlOperator(
-            task_id='get_data_task1',
-            sql="SELECT COUNT(*) FROM bc_poc_table1 WHERE id_relasi < 10;",
+            task_id='get_data_task',
+            # sql="SELECT COUNT(*) FROM bc_poc_table1 WHERE id_relasi < 10;",
+            sql="SELECT COUNT(*) FROM bc_poc_table1;",
             mysql_conn_id=rdsmysql_conn,
             dag=dag
         )
@@ -65,7 +57,8 @@ with DAG(
         count_data = result[0][0]
         print("count_data:", count_data)
         
-        batch_size = 20
+        # batch_size = 20
+        batch_size = 100000
         offset = 0
         total_rows = count_data
         list_offset = []
@@ -106,11 +99,7 @@ with DAG(
             pd_kwargs={'index': False},
             dag=dag,
         )
-        if sql_to_s3_task.execute(context={}) == 'failed':
-            print("ERROR S3")
-        else:
-            print("NO ERROR S3")
+        sql_to_s3_task.execute(context={})
 
-    upload_to_s3()
     list_offset = get_row_data()
     get_batch_data.expand(offset=list_offset)

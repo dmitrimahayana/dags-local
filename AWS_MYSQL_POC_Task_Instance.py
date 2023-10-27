@@ -16,13 +16,14 @@ from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 default_args = {
     'owner': 'Dmitri',
     'start_date': datetime(2023, 9, 12),
-    'retries': 0,  # Number of retries if a task fails
+    'retries': 1,  # Number of retries if a task fails
     'retry_delay': timedelta(minutes=1),  # Time between retries
 }
 
 # Create a DAG instance
 dag = DAG(
     'AWS_MYSQL_POC_Task_Instance',
+    tags=["Dynamic_Task"],
     default_args=default_args,
     description='An Airflow DAG for Brazilian Olist Dataset',
     schedule_interval='@monthly',  # Set the schedule interval (e.g., None for manual runs)
