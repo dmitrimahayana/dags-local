@@ -32,6 +32,11 @@ default_args = {
     'retry_delay': timedelta(minutes=1),  # Time between retries
 }
 
+# Define empty task
+final_task = None
+list_offset = None
+run_batch_process = None
+
 with DAG(
     dag_id="Dynamic_Task_V1",
     tags=["Dynamic_Task"],
@@ -46,8 +51,8 @@ with DAG(
     def get_row_data(**kwargs):
         get_data_task = MySqlOperator(
             task_id='get_data_task',
-            # sql="SELECT COUNT(*) FROM bc_poc_table1 WHERE id_relasi < 10;",
-            sql="SELECT COUNT(*) FROM bc_poc_table1;",
+            sql="SELECT COUNT(*) FROM bc_poc_table1 WHERE id_relasi < 10;",
+            # sql="SELECT COUNT(*) FROM bc_poc_table1;",
             mysql_conn_id=rdsmysql_conn,
             dag=dag
         )
@@ -57,8 +62,8 @@ with DAG(
         count_data = result[0][0]
         print("count_data:", count_data)
         
-        # batch_size = 20
-        batch_size = 100000
+        batch_size = 15
+        # batch_size = 100000
         offset = 0
         total_rows = count_data
         list_offset = []
@@ -100,6 +105,26 @@ with DAG(
             dag=dag,
         )
         sql_to_s3_task.execute(context={})
+    
+    @task
+    def final_task(**kwargs):
+        # Pull XCom value using the correct key
+        ti = kwargs['ti']
+        count_data = ti.xcom_pull(task_ids='get_row_data', key='count_data')
+        batch_size = ti.xcom_pull(task_ids='get_row_data', key='batch_size')
+        print("count_data:", count_data)
+        print("batch_size:", batch_size)
 
     list_offset = get_row_data()
-    get_batch_data.expand(offset=list_offset)
+    run_batch_process = get_batch_data.expand(offset=list_offset)
+    final_task = final_task()
+
+get_total_row1 = MySqlOperator(
+    task_id='get_total_row1',
+    sql="SELECT * FROM bc_poc_table1 WHERE id_relasi < 10;",
+    mysql_conn_id=rdsmysql_conn,
+    dag=dag
+)
+
+run_batch_process >> final_task
+final_task >> get_total_row1
